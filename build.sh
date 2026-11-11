@@ -39,9 +39,24 @@ case "${1:-}" in
     sleep 0.5
     [ -e "/Applications/$NAME.app" ] && mv "/Applications/$NAME.app" ~/.Trash/"$NAME $(date +%s).app"
     ditto "$APP" "/Applications/$NAME.app"
+    # Sign this Mac's copy with your own development certificate when there is one (found here, never stored
+    # in the repo). Its signature stays the same from build to build, so the Accessibility grant survives updates.
+    # An ad-hoc signature changes every build, and macOS quietly stops honouring the old grant.
+    ID="${SIGN_ID:-$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/Apple Development|Developer ID Application/ {print $2; exit}')}"
+    if [ -n "$ID" ]; then
+      codesign --force --options runtime --sign "$ID" "/Applications/$NAME.app" 2>/dev/null && SIGNED=1 || SIGNED=0
+    else
+      SIGNED=0
+    fi
+    # The build folder's copy must not be the one Launch Services (or a login item) starts: it has no grant.
+    /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$APP" 2>/dev/null || true
     open "/Applications/$NAME.app"
     echo "✓ installed to /Applications/$NAME.app (look for the pen in your menu bar)"
-    echo "  A new build has a new signature: re-allow Penlight under Privacy & Security › Accessibility."
+    if [ "$SIGNED" = 1 ]; then
+      echo "  Signed with your development certificate: the Accessibility grant carries over to later builds."
+    else
+      echo "  A new build has a new signature: re-allow Penlight under Privacy & Security › Accessibility."
+    fi
     ;;
   --dist)
     rm -f "build/$NAME.zip"
