@@ -263,47 +263,109 @@ struct YouPane: View {
 // MARK: Apps
 
 struct AppsPane: View {
-    @State private var list = Prefs.excluded
-    @State private var pick: String?
+    @State private var off = Set(Prefs.excluded)
+    @State private var apps: [InstalledApp] = []
+    @State private var search = ""
+
+    private var shown: [InstalledApp] {
+        let q = search.trimmingCharacters(in: .whitespaces)
+        return q.isEmpty ? apps : apps.filter { $0.name.localizedCaseInsensitiveContains(q) }
+    }
 
     var body: some View {
         Form {
             Section {
-                ForEach(list, id: \.self) { id in
-                    HStack {
-                        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) {
-                            Image(nsImage: NSWorkspace.shared.icon(forFile: url.path)).resizable().frame(width: 18, height: 18)
-                            Text(FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: ""))
-                        } else {
-                            Image(systemName: "app.dashed").frame(width: 18, height: 18)
-                            Text(id).foregroundStyle(.secondary)
+                HStack {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField("Find an app", text: $search).textFieldStyle(.plain)
+                }
+                if apps.isEmpty {
+                    HStack { ProgressView().controlSize(.small); Text("Finding your apps…").foregroundStyle(.secondary) }
+                }
+                ForEach(shown) { a in
+                    Toggle(isOn: Binding(get: { !off.contains(a.id) }, set: { on in set(a.id, on: on) })) {
+                        HStack(spacing: 8) {
+                            if let icon = a.icon { Image(nsImage: icon).resizable().frame(width: 18, height: 18) }
+                            else { Image(systemName: "app.dashed").frame(width: 18, height: 18) }
+                            Text(a.name)
+                            if Prefs.terminals.contains(a.id) {
+                                Text("writes commands").font(.caption).foregroundStyle(.secondary)
+                            }
                         }
-                        Spacer()
-                        Button { list.removeAll { $0 == id }; Prefs.excluded = list } label: { Image(systemName: "minus.circle") }
-                            .buttonStyle(.borderless)
                     }
                 }
-            } header: { Text("The button never shows in") } footer: {
-                HStack {
-                    Button("Add an app…") { add() }
-                    Button("Reset to defaults") { list = Prefs.defaultExcluded; Prefs.excluded = list }
-                    Spacer()
+            } header: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(App.name) works in every app you can type in")
+                    Text("\(apps.count - apps.filter { off.contains($0.id) }.count) of \(apps.count) apps on")
+                        .font(.caption).foregroundStyle(.secondary).textCase(nil)
+                }
+            } footer: {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Button("Turn all on") { off = []; Prefs.excluded = [] }
+                        Button("Reset to defaults") { off = Set(Prefs.defaultExcluded); Prefs.excluded = Prefs.defaultExcluded }
+                        Spacer()
+                    }
+                    Text("Password boxes are always skipped, in every app. Password managers start switched off.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
         .formStyle(.grouped)
+        .task { apps = await InstalledApp.all(also: Prefs.excluded) }
     }
 
-    private func add() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.application]
-        panel.directoryURL = URL(fileURLWithPath: "/Applications")
-        panel.allowsMultipleSelection = true
-        guard panel.runModal() == .OK else { return }
-        for url in panel.urls {
-            if let id = Bundle(url: url)?.bundleIdentifier, !list.contains(id) { list.append(id) }
-        }
-        Prefs.excluded = list
+    private func set(_ id: String, on: Bool) {
+        if on { off.remove(id) } else { off.insert(id) }
+        Prefs.excluded = apps.map(\.id).filter { off.contains($0) } + off.filter { id in !apps.contains { $0.id == id } }.sorted()
+    }
+}
+
+/// An app on this Mac, for the Apps page.
+struct InstalledApp: Identifiable {
+    let id: String
+    let name: String
+    let icon: NSImage?
+
+    /// Every app in the usual folders plus anything running, by name. `also` adds saved ids found elsewhere.
+    static func all(also: [String]) async -> [InstalledApp] {
+        let running = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }.compactMap(\.bundleURL)
+        return await Task.detached(priority: .userInitiated) {
+            let fm = FileManager.default
+            let home = fm.homeDirectoryForCurrentUser.path
+            var urls: [URL] = running
+            for dir in ["/Applications", "/Applications/Utilities", "/System/Applications", "/System/Applications/Utilities", home + "/Applications"] {
+                let base = URL(fileURLWithPath: dir)
+                for u in (try? fm.contentsOfDirectory(at: base, includingPropertiesForKeys: nil, options: .skipsHiddenFiles)) ?? [] {
+                    if u.pathExtension == "app" { urls.append(u); continue }
+                    // One level of folders ("Microsoft Office", "Adobe …").
+                    var dirFlag: ObjCBool = false
+                    if fm.fileExists(atPath: u.path, isDirectory: &dirFlag), dirFlag.boolValue {
+                        for v in (try? fm.contentsOfDirectory(at: u, includingPropertiesForKeys: nil, options: .skipsHiddenFiles)) ?? []
+                        where v.pathExtension == "app" { urls.append(v) }
+                    }
+                }
+            }
+            var seen = Set<String>(), out: [InstalledApp] = []
+            let me = Bundle.main.bundleIdentifier
+            for u in urls {
+                guard let b = Bundle(url: u), let id = b.bundleIdentifier, id != me, !seen.contains(id) else { continue }
+                // Background-only helpers have nothing to type in. (Menu-bar apps like Raycast do, so they stay.)
+                if b.object(forInfoDictionaryKey: "LSBackgroundOnly") as? Bool == true { continue }
+                seen.insert(id)
+                let name = fm.displayName(atPath: u.path).replacingOccurrences(of: ".app", with: "")
+                out.append(InstalledApp(id: id, name: name, icon: NSWorkspace.shared.icon(forFile: u.path)))
+            }
+            for id in also where !seen.contains(id) {
+                seen.insert(id)
+                if let u = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) {
+                    out.append(InstalledApp(id: id, name: fm.displayName(atPath: u.path).replacingOccurrences(of: ".app", with: ""),
+                                            icon: NSWorkspace.shared.icon(forFile: u.path)))
+                }
+            }
+            return out.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        }.value
     }
 }
 

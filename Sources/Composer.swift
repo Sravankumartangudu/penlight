@@ -190,7 +190,8 @@ enum Composer {
         m.lastAsk = ask
         let screen = m.useScreen ? m.screen?.text : nil
         let prompt = Writer.prompt(ask: ask, field: m.field, screen: screen, app: m.appName,
-                                   window: m.target?.windowTitle ?? "", previous: m.previous)
+                                   window: m.target?.windowTitle ?? "", previous: m.previous,
+                                   terminal: m.target?.terminal == true)
         m.phase = .writing
         m.output = ""
         m.note = nil
@@ -205,7 +206,8 @@ enum Composer {
             case .failure(let e):
                 m.phase = .failed(e.localizedDescription)
             case .success(let full):
-                m.output = Writer.clean(full.isEmpty ? m.output : full)
+                let raw = full.isEmpty ? m.output : full
+                m.output = m.target?.terminal == true ? Writer.command(raw) : Writer.clean(raw)
                 if m.output.isEmpty { m.phase = .failed("The AI sent back nothing. Try again, or say a little more."); return }
                 if Prefs.preview || m.previous != nil || !m.canInsert { m.phase = .review } else { insert() }
             }
@@ -278,6 +280,7 @@ struct ComposerView: View {
         case .review: return "Change it… (↩ inserts as is)"
         case .writing: return "Writing…"
         default:
+            if model.target?.terminal == true { return "What should the command do? ↩ suggests the next one" }
             if model.field.mode == .whole || model.field.mode == .selection { return "What should I do with it? ↩ polishes" }
             return model.canInsert ? "What should I write? ↩ replies for you" : "What should I write?"
         }
@@ -390,7 +393,7 @@ struct ComposerView: View {
 
     private var chips: some View {
         HStack(spacing: 6) {
-            ForEach(Writer.chips(hasDraft: model.field.mode == .whole || model.field.mode == .selection), id: \.self) { c in
+            ForEach(Writer.chips(hasDraft: model.field.mode == .whole || model.field.mode == .selection, terminal: model.target?.terminal == true), id: \.self) { c in
                 Button(c) { Composer.chip(c) }
                     .buttonStyle(ChipStyle())
             }

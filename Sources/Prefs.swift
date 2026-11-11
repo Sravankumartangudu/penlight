@@ -5,13 +5,17 @@ import AppKit
 enum Prefs {
     private static let d = UserDefaults.standard
 
-    /// Apps where the button never shows: terminals, code editors and password managers type for you
-    /// or hold secrets, and launchers close before you could use it.
+    /// Penlight works in every app you can type in. Only password managers start switched off: they hold
+    /// secrets. (Password boxes are skipped in every app regardless.)
     static let defaultExcluded = [
-        "com.apple.Terminal", "com.googlecode.iterm2", "com.mitchellh.ghostty", "dev.warp.Warp-Stable",
-        "com.apple.dt.Xcode", "com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92",
         "com.1password.1password", "com.agilebits.onepassword7", "com.apple.keychainaccess", "com.apple.Passwords",
-        "com.apple.Spotlight", "com.raycast.macos", "com.runningwithcrayons.Alfred",
+        "com.bitwarden.desktop", "com.lastpass.LastPass",
+    ]
+
+    /// Terminals: the prompt is a read-only text area, so Penlight pastes a command there instead.
+    static let terminals: Set<String> = [
+        "com.apple.Terminal", "com.googlecode.iterm2", "com.mitchellh.ghostty", "dev.warp.Warp-Stable",
+        "net.kovidgoyal.kitty", "org.alacritty", "com.github.wez.wezterm", "co.zeit.hyper", "com.termius-dmg.mac",
     ]
 
     static func register() {
@@ -19,6 +23,11 @@ enum Prefs {
             "showButton": true, "hotkey": true, "preview": false, "readScreen": true, "ocr": true,
             "about": "", "appearance": "system", "excluded": defaultExcluded, "pausedUntil": 0.0,
         ])
+        // 1.1.0: every app is on. Lists saved by 1.0.0 started with terminals, editors and launchers off.
+        if d.integer(forKey: "appsVersion") < 2 {
+            d.removeObject(forKey: "excluded")
+            d.set(2, forKey: "appsVersion")
+        }
     }
 
     static var showButton: Bool { get { d.bool(forKey: "showButton") } set { d.set(newValue, forKey: "showButton"); changed() } }

@@ -2,7 +2,8 @@
 //
 // Polls the focused element four times a second off the main thread (Accessibility notifications
 // would need an observer per app and still miss web views). Only real, editable, visible text
-// boxes count: no passwords, search or address bars, toolbars, or apps on the excluded list.
+// boxes count: no passwords, search or address bars, toolbars, or apps switched off in Settings.
+// Terminals are the one exception: their prompt lives in a read-only text area, and pasting still works.
 
 import AppKit
 import ApplicationServices
@@ -17,6 +18,8 @@ struct Target {
     let windowTitle: String
     /// Screen frame, top-left origin.
     let frame: CGRect
+    /// A terminal's text area: the whole output, not settable. Penlight pastes at the prompt and reads the output.
+    var terminal = false
 
     func same(_ o: Target?) -> Bool { o.map { CFEqual(element, $0.element) } ?? false }
 }
@@ -72,9 +75,10 @@ final class Focus {
         let pid = AX.pid(el)
         guard pid != App.pid, pid == app.processIdentifier else { return nil }
 
-        guard editable(el) else { return nil }
+        let terminal = Prefs.terminals.contains(app.bundleIdentifier ?? "") && AX.role(el) == "AXTextArea"
+        guard terminal || editable(el) else { return nil }
         // In web pages the focused node can be a paragraph inside the editor; the box is the editable root.
-        if let root = AX.element(el, "AXHighestEditableAncestor") { el = root }
+        if !terminal, let root = AX.element(el, "AXHighestEditableAncestor") { el = root }
         guard let frame = AX.frame(el), frame.width >= 80, frame.height >= 14 else { return nil }
         // Off-screen or scrolled-away boxes keep focus in some apps; ignore those.
         guard NSScreen.screens.contains(where: { $0.frame.intersects(AX.cocoa(frame)) }) else { return nil }
@@ -82,7 +86,8 @@ final class Focus {
 
         let win = AX.element(el, kAXWindowAttribute)
         return Target(element: el, pid: pid, app: app.localizedName ?? "this app", bundleId: app.bundleIdentifier ?? "",
-                      window: win, windowTitle: win.flatMap { AX.string($0, kAXTitleAttribute) } ?? "", frame: frame)
+                      window: win, windowTitle: win.flatMap { AX.string($0, kAXTitleAttribute) } ?? "", frame: frame,
+                      terminal: terminal)
     }
 
     static func editable(_ el: AXUIElement) -> Bool {
@@ -114,6 +119,6 @@ final class Focus {
     static func refresh(_ t: Target) -> Target {
         guard let f = AX.frame(t.element) else { return t }
         return Target(element: t.element, pid: t.pid, app: t.app, bundleId: t.bundleId, window: t.window,
-                      windowTitle: t.windowTitle, frame: f)
+                      windowTitle: t.windowTitle, frame: f, terminal: t.terminal)
     }
 }

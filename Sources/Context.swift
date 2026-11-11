@@ -21,6 +21,12 @@ enum Context {
     static func read(_ t: Target, done: @escaping (Screen) -> Void) {
         guard Prefs.readScreen else { done(Screen()); return }
         DispatchQueue.global(qos: .userInitiated).async {
+            // A terminal's text area is its output: the newest part is the context.
+            if t.terminal {
+                let out = (AX.string(t.element, kAXValueAttribute) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                DispatchQueue.main.async { done(Screen(text: String(out.suffix(6000)), source: "screen")) }
+                return
+            }
             let items = t.window.map { tree($0, skip: t.element) } ?? []
             let text = Writer.pick(items, field: t.frame)
             if text.count >= 160 || !Prefs.ocr || !CGPreflightScreenCaptureAccess() {

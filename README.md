@@ -38,7 +38,8 @@ Chat apps like ChatGPT and Claude Desktop don't let other apps use them. **Setti
 - Click **"Reading … chars"** in the writing box to see exactly what will be sent, or **Don't use** to leave the screen out.
 - **API keys are kept in your Mac's Keychain.** They aren't stored in files and are sent only to their own provider.
 - **Claude Code** uses your existing Claude Code sign-in. Penlight starts it with no tools, no plugins and no MCP servers, so it can only write text.
-- Penlight never shows on password fields. It skips terminals, code editors and password managers by default. You can change that list in **Settings › Apps**.
+- Penlight works in every app you can type in: chat apps, mail, browsers, editors, launchers and terminals. Password fields are always skipped, and password managers start switched off. **Settings › Apps** lists every app on your Mac with an on/off switch.
+- In a terminal (Terminal, iTerm2, Ghostty, Warp, kitty, Alacritty, WezTerm) it reads the recent output and writes a command at the prompt: **Next command**, **Fix the last error** or **Undo that**. It never presses Return for you.
 - There's no analytics and no account. Penlight never logs screen text.
 
 ## Permissions

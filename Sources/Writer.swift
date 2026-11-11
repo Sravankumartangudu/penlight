@@ -45,9 +45,10 @@ struct FieldText: Equatable {
 
 enum Writer {
     /// Tone shortcuts under the instruction box.
-    static func chips(hasDraft: Bool) -> [String] {
-        hasDraft ? ["Polish", "Shorter", "More formal", "Friendlier", "Fix spelling", "In English"]
-                 : ["Reply", "Say yes", "Say no politely", "Ask for details", "Thank them"]
+    static func chips(hasDraft: Bool, terminal: Bool = false) -> [String] {
+        if terminal { return ["Next command", "Fix the last error", "Undo that"] }
+        return hasDraft ? ["Polish", "Shorter", "More formal", "Friendlier", "Fix spelling", "In English"]
+                        : ["Reply", "Say yes", "Say no politely", "Ask for details", "Thank them"]
     }
 
     static func system(about: String) -> String {
@@ -73,12 +74,16 @@ enum Writer {
 
     /// The user turn: where they are, what's on screen, what's in the box, and what they asked for.
     static func prompt(ask: String, field: FieldText, screen: String?, app: String, window: String,
-                       previous: String? = nil) -> String {
+                       previous: String? = nil, terminal: Bool = false) -> String {
         var parts: [String] = []
         let place = window.isEmpty || window == app ? app : "\(app), window “\(window)”"
         parts.append("I'm typing in \(place.isEmpty ? "an app" : place).")
+        if terminal {
+            parts.append("This is a terminal: the text box is the shell prompt. Write only the command to type there: no explanation, no $ prompt, no code fences, no comments. Prefer one line; join steps with && if needed. Never write anything that deletes or overwrites unless I asked for exactly that.")
+        }
         if let screen, !screen.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            parts.append("What's on screen around the text box (context only):\n<screen>\n\(screen)\n</screen>")
+            parts.append(terminal ? "The terminal's recent output (context only):\n<screen>\n\(screen)\n</screen>"
+                                  : "What's on screen around the text box (context only):\n<screen>\n\(screen)\n</screen>")
         }
         switch field.mode {
         case .empty: break
@@ -89,15 +94,19 @@ enum Writer {
         if let previous, !previous.isEmpty {
             parts.append("Your last version, which I want changed:\n<previous>\n\(previous)\n</previous>")
         }
-        parts.append("What I want: " + instruction(ask, field: field, refining: previous?.isEmpty == false))
+        parts.append("What I want: " + instruction(ask, field: field, refining: previous?.isEmpty == false, terminal: terminal))
         return parts.joined(separator: "\n\n")
     }
 
     /// The user's words, or a sensible default when they just pressed Enter.
-    static func instruction(_ ask: String, field: FieldText, refining: Bool) -> String {
+    static func instruction(_ ask: String, field: FieldText, refining: Bool, terminal: Bool = false) -> String {
         let a = ask.trimmingCharacters(in: .whitespacesAndNewlines)
         switch a.lowercased() {
-        case "": break
+        case "":
+            if terminal && !refining { return "The command I most likely want next, given the output." }
+        case "next command": return "The command I most likely want next, given the output."
+        case "fix the last error": return "The command that fixes the last error in the output."
+        case "undo that": return "The command that undoes what my last command did."
         case "polish": return "Turn my draft into the finished text: keep my meaning, fix grammar and spelling, make it clear and natural."
         case "shorter": return "Make it shorter and tighter, keeping the meaning."
         case "more formal": return "Make it more formal and professional."
@@ -139,6 +148,15 @@ enum Writer {
             if !inner.contains(a) && !inner.contains(b) { t = inner.trimmingCharacters(in: .whitespacesAndNewlines) }
         }
         return t
+    }
+
+    /// `clean` for a shell prompt: also drops "$ " prompts the model copied. Never ends in a newline,
+    /// so pasting it never runs it: you press Return yourself.
+    static func command(_ raw: String) -> String {
+        clean(raw).split(separator: "\n", omittingEmptySubsequences: false)
+            .map { l in l.hasPrefix("$ ") || l.hasPrefix("% ") ? String(l.dropFirst(2)) : String(l) }
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Picks the screen lines worth sending: the column the text box sits in, above it, nearest last.

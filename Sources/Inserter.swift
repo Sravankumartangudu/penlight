@@ -14,6 +14,8 @@ enum Inserter {
 
     /// What's already in the box, and how the new text should go in.
     static func field(_ t: Target) -> FieldText {
+        // A terminal's value is its whole output, not something you typed: the command goes in at the prompt.
+        if t.terminal { return FieldText() }
         let value = AX.string(t.element, kAXValueAttribute) ?? ""
         let selected = AX.string(t.element, kAXSelectedTextAttribute)
         return FieldText.read(value: value, selected: selected, cursor: AX.selectedRange(t.element)?.location)

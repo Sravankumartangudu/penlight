@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.0 — 2026-11-11
+
+- Works in every app you can type in. Slack, code editors, launchers and terminals are all on now. Only password managers start switched off, and password fields are still always skipped.
+- **Settings › Apps** lists every app on your Mac with an on/off switch, plus a search box, **Turn all on** and **Reset to defaults**.
+- Terminals: Penlight reads the recent output and writes a command at the prompt. Chips: Next command, Fix the last error, Undo that. Pressing ↩ with nothing typed suggests the next command. Return is never pressed for you.
+- Lists saved by 1.0.0 are reset once to the new defaults.
+
 ## 1.0.0 — 2026-11-11
 
 First release.

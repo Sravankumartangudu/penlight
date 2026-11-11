@@ -37,6 +37,16 @@ check(Writer.clean("“Sounds good!”") == "Sounds good!", "wrapping quotes str
 check(Writer.clean("\"a\" and \"b\"") == "\"a\" and \"b\"", "inner quotes kept")
 check(Writer.clean("Note: bring the file\nThanks") == "Note: bring the file\nThanks", "normal first line kept")
 
+// Terminals
+check(Writer.chips(hasDraft: false, terminal: true).contains("Next command"), "terminal chips")
+check(Writer.instruction("", field: FieldText(), refining: false, terminal: true).contains("command"), "terminal default is the next command")
+check(Writer.instruction("", field: FieldText(), refining: true, terminal: true) == "Improve it.", "terminal refine")
+let tp = Writer.prompt(ask: "", field: FieldText(), screen: "$ make\nerror: x", app: "Terminal", window: "zsh", terminal: true)
+check(tp.contains("shell prompt") && tp.contains("terminal's recent output"), "terminal prompt")
+check(!p.contains("shell prompt"), "chat prompt has no terminal rules")
+check(Writer.command("```bash\n$ ls -la\n```") == "ls -la", "command strips fence and $")
+check(Writer.command("git status\n") == "git status", "command never ends in a newline")
+
 // Picking screen lines
 let field = CGRect(x: 300, y: 800, width: 600, height: 40)
 let items: [(CGRect, String)] = [
